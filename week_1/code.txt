@@ -15,7 +15,99 @@ docker run -it \
     -p 5432:5432 \
     postgres:13
 
+docker run -it \
+    -e PGADMIN_DEFAULT_EMAIL="admin@admin.com" \
+    -e PGADMIN_DEFAULT_PASSWORD="root" \
+    -p 8080:80 \
+    dpage/pgadmin4
+
+##using pgadmin and posgres in the same network
+#create the network
+
+docker network create pg-network
+
+#run posgres and pgadmin on the network
+
+docker run -it \
+    -e POSTGRES_USER="root" \
+    -e POSTGRES_PASSWORD="root" \
+    -e POSTGRES_DB="ny_taxi" \
+    -v $(pwd)/ny_taxi_postgres_data:/var/lib/postgresql/data \
+    -p 5432:5432 \
+    --network=pg-network \
+    --name=pg-database \
+    postgres:13
+
+docker run -it \
+    -e PGADMIN_DEFAULT_EMAIL="admin@admin.com" \
+    -e PGADMIN_DEFAULT_PASSWORD="root" \
+    -p 8080:80 \
+    --network=pg-network \
+    --name=pgadmin \
+    dpage/pgadmin4
+
+
 # reading parquet file
 import pyarrow.parquet as pq
 trips = pq.read_table('trips.parquet')
 trips = trips.to_pandas()
+
+
+#convert notebook to script
+jupyter nbconvert --to=script upload-data.ipynb
+
+
+# running ingestion script
+URL="https://github.com/DataTalksClub/nyc-tlc-data/releases/download/yellow/yellow_tripdata_2021-01.csv.gz"
+
+python ingest_data.py \
+  --user=root \
+  --password=root \
+  --host=localhost \
+  --port=5432 \
+  --db=ny_taxi \
+  --table_name=yellow_taxi_data \
+  --csv_url=${URL}
+
+#dockerizing this we need to update dockerfile to have the dependecies 
+
+#build wiht 
+docker build -it taxi_ingest:v001 .
+
+#to run it
+
+docker run -it \
+    --network=pg-network \
+    taxi_ingest:v001 \
+    --user=root \
+    --password=root \
+    --host=pg-database \
+    --port=5432 \
+    --db=ny_taxi \
+    --table_name=yellow_taxi_data \
+    --csv_url=${URL}
+
+#convert to dockercompose yaml file
+services:
+  pgdatabase:
+    image: postgres:13
+    environment:
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=root
+      - POSTGRES_DB=ny_taxi
+    volumes:
+      - "./ny_taxi_postgres_data:/var/lib/postgresql/data:rw"
+    ports:
+      - "5432:5432"
+  pgadmin:
+    image: dpage/pgadmin4
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@admin.com
+      - PGADMIN_DEFAULT_PASSWORD=root
+    ports:
+      - "8080:80"
+    volumes:
+      - ./data_pgadmin:/var/lib/pgadmin
+
+#you have to change folder permision for data_pgadmin
+sudo chown 5050:5050 data_pgadmin
