@@ -18,7 +18,9 @@ def main(params):
     csv_url = params.csv_url
 
     # connect to database engine
-    engine = create_engine(f'postgresql://{pg_user}:{pg_password}@{pg_host}:{pg_port}/{pg_db}').connect()
+    engine = create_engine(
+        f'postgresql://{pg_user}:{pg_password}@{pg_host}:{pg_port}/{pg_db}'
+        ).connect()
     
     print(engine)
     
